@@ -40,6 +40,8 @@ pub(crate) mod wkwebview;
 use wkwebview::*;
 #[cfg(target_os = "windows")]
 pub(crate) mod webview2;
+pub use webview2::Window;
+
 #[cfg(target_os = "windows")]
 use self::webview2::*;
 use crate::Result;
@@ -54,7 +56,6 @@ use std::{path::PathBuf, rc::Rc};
 pub use url::Url;
 
 #[cfg(target_os = "windows")]
-use crate::application::platform::windows::WindowExtWindows;
 use crate::application::{dpi::PhysicalSize};
 
 #[cfg(target_os = "macos")]

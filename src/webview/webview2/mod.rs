@@ -10,10 +10,11 @@ use crate::{
 };
 
 use file_drop::FileDropController;
+use tao::{dpi::{PhysicalPosition, PhysicalSize}, window::CursorIcon};
 use url::Url;
 
 use std::{
-  collections::HashSet, fmt::Write, iter::once, mem::MaybeUninit, os::windows::prelude::OsStrExt,
+  collections::HashSet, fmt::Write, iter::once, mem::MaybeUninit, os::{windows::prelude::OsStrExt, raw::c_void},
   path::PathBuf, rc::Rc, sync::mpsc,
 };
 
@@ -39,10 +40,42 @@ use windows::{
 
 use webview2_com::{Microsoft::Web::WebView2::Win32::*, *};
 
-use crate::application::{platform::windows::WindowExtWindows, window::Window};
+use crate::application::{platform::windows::WindowExtWindows}; // removed window::Window
 use http::Request;
 
 use super::Theme;
+
+pub struct Window {
+  pub hwnd: *mut c_void
+}
+
+impl Window {
+  pub fn hwnd(&self) -> *mut c_void {
+    self.hwnd
+  }
+  pub fn scale_factor(&self) -> f64 {
+    1.0
+  }
+  pub fn is_decorated(&self) -> bool {
+    true
+  }
+  pub fn inner_size(&self) -> PhysicalSize<u32> {
+    PhysicalSize::new(100, 100)
+  }
+  pub fn is_resizable(&self) -> bool {
+    false
+  }
+  pub fn is_maximized(&self) -> bool {
+    false
+  }
+  pub fn set_cursor_icon(&self, cursor_icon: CursorIcon) {
+    todo!() // leave empty
+  }
+  pub fn begin_resize_drag(&self, edge: isize, button: u32, x: i32, y: i32) {
+    todo!() // leave empty
+  }
+}
+
 
 impl From<webview2_com::Error> for Error {
   fn from(err: webview2_com::Error) -> Self {
