@@ -1,8 +1,8 @@
-// Copyright 2020-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2020-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-package {{app-domain-reversed}}.{{app-name-snake-case}}
+package {{package}}
 
 // taken from https://github.com/ionic-team/capacitor/blob/6658bca41e78239347e458175b14ca8bd5c1d6e8/android/capacitor/src/main/java/com/getcapacitor/BridgeWebChromeClient.java
 
@@ -28,8 +28,6 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.IOException
@@ -37,7 +35,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 
-class RustWebChromeClient(appActivity: AppCompatActivity) : WebChromeClient() {  
+class RustWebChromeClient(appActivity: WryActivity) : WebChromeClient() {
   private interface PermissionListener {
     fun onPermissionSelect(isGranted: Boolean?)
   }
@@ -46,12 +44,12 @@ class RustWebChromeClient(appActivity: AppCompatActivity) : WebChromeClient() {
     fun onActivityResult(result: ActivityResult?)
   }
 
-  private val activity: AppCompatActivity
+  private val activity: WryActivity
   private var permissionLauncher: ActivityResultLauncher<Array<String>>
   private var activityLauncher: ActivityResultLauncher<Intent>
   private var permissionListener: PermissionListener? = null
   private var activityListener: ActivityResultListener? = null
-  
+
   init {
     activity = appActivity
     val permissionCallback =
@@ -492,4 +490,13 @@ class RustWebChromeClient(appActivity: AppCompatActivity) : WebChromeClient() {
     val storageDir = activity.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
     return File.createTempFile(imageFileName, ".jpg", storageDir)
   }
+
+  override fun onReceivedTitle(
+      view: WebView,
+      title: String
+  ) {
+    handleReceivedTitle(view, title)
+  }
+
+  private external fun handleReceivedTitle(webview: WebView, title: String);
 }

@@ -1,24 +1,23 @@
-// Copyright 2020-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2020-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-use gdk::{Cursor, EventMask, WindowEdge};
+use gdk::EventMask;
 use gio::Cancellable;
-use glib::signal::Inhibit;
 use gtk::prelude::*;
 #[cfg(any(debug_assertions, feature = "devtools"))]
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::{
   collections::hash_map::DefaultHasher,
   hash::{Hash, Hasher},
   rc::Rc,
-  sync::Mutex,
+  sync::{Arc, Mutex},
 };
 use url::Url;
 use webkit2gtk::{
-  traits::*, LoadEvent, NavigationPolicyDecision, PolicyDecisionType, UserContentInjectedFrames,
-  UserScript, UserScriptInjectionTime, WebView, WebViewBuilder,
+  traits::*, AutoplayPolicy, LoadEvent, NavigationPolicyDecision, PolicyDecisionType, SettingsExt,
+  URIRequest, UserContentInjectedFrames, UserScript, UserScriptInjectionTime, WebView,
+  WebViewBuilder, WebsitePoliciesBuilder,
 };
 use webkit2gtk_sys::{
   webkit_get_major_version, webkit_get_micro_version, webkit_get_minor_version,
@@ -35,7 +34,11 @@ use crate::{
 };
 
 mod file_drop;
+mod synthetic_mouse_events;
+mod undecorated_resizing;
 mod web_context;
+
+use javascriptcore::ValueExt;
 
 pub(crate) struct InnerWebView {
   pub webview: Rc<WebView>,
@@ -56,11 +59,16 @@ impl InnerWebView {
 
     // default_context allows us to create a scoped context on-demand
     let mut default_context;
-    let web_context = match web_context {
-      Some(w) => w,
-      None => {
-        default_context = Default::default();
-        &mut default_context
+    let web_context = if attributes.incognito {
+      default_context = WebContext::new_ephemeral();
+      &mut default_context
+    } else {
+      match web_context {
+        Some(w) => w,
+        None => {
+          default_context = Default::default();
+          &mut default_context
+        }
       }
     };
 
@@ -69,6 +77,13 @@ impl InnerWebView {
       webview = webview.user_content_manager(web_context.manager());
       webview = webview.web_context(web_context.context());
       webview = webview.is_controlled_by_automation(web_context.allows_automation());
+      if attributes.autoplay {
+        webview = webview.website_policies(
+          &WebsitePoliciesBuilder::new()
+            .autoplay(AutoplayPolicy::Allow)
+            .build(),
+        );
+      }
       webview.build()
     };
 
@@ -79,7 +94,6 @@ impl InnerWebView {
     let w = window_rc.clone();
     let ipc_handler = attributes.ipc_handler.take();
     let manager = web_context.manager();
-
     // Use the window hash as the script handler name to prevent from conflict when sharing same
     // web context.
     let window_hash = {
@@ -106,106 +120,26 @@ impl InnerWebView {
       close_window.gtk_window().close();
     });
 
+    // document title changed handler
+    if let Some(document_title_changed_handler) = attributes.document_title_changed_handler {
+      let w = window_rc.clone();
+      webview.connect_title_notify(move |webview| {
+        document_title_changed_handler(
+          &w,
+          webview.title().map(|t| t.to_string()).unwrap_or_default(),
+        )
+      });
+    }
+
     webview.add_events(
       EventMask::POINTER_MOTION_MASK
         | EventMask::BUTTON1_MOTION_MASK
         | EventMask::BUTTON_PRESS_MASK
         | EventMask::TOUCH_MASK,
     );
-    webview.connect_motion_notify_event(|webview, event| {
-      // This one should be GtkWindow
-      if let Some(widget) = webview.parent() {
-        // This one should be GtkWindow
-        if let Some(window) = widget.parent() {
-          // Safe to unwrap unless this is not from tao
-          let window: gtk::Window = window.downcast().unwrap();
-          if !window.is_decorated() && window.is_resizable() {
-            if let Some(window) = window.window() {
-              let (cx, cy) = event.root();
-              let edge = hit_test(&window, cx, cy);
-              // FIXME: calling `window.begin_resize_drag` seems to revert the cursor back to normal style
-              window.set_cursor(
-                Cursor::from_name(
-                  &window.display(),
-                  match edge {
-                    WindowEdge::North => "n-resize",
-                    WindowEdge::South => "s-resize",
-                    WindowEdge::East => "e-resize",
-                    WindowEdge::West => "w-resize",
-                    WindowEdge::NorthWest => "nw-resize",
-                    WindowEdge::NorthEast => "ne-resize",
-                    WindowEdge::SouthEast => "se-resize",
-                    WindowEdge::SouthWest => "sw-resize",
-                    _ => "default",
-                  },
-                )
-                .as_ref(),
-              );
-            }
-          }
-        }
-      }
-      Inhibit(false)
-    });
-    webview.connect_button_press_event(|webview, event| {
-      if event.button() == 1 {
-        let (cx, cy) = event.root();
-        // This one should be GtkBox
-        if let Some(widget) = webview.parent() {
-          // This one should be GtkWindow
-          if let Some(window) = widget.parent() {
-            // Safe to unwrap unless this is not from tao
-            let window: gtk::Window = window.downcast().unwrap();
-            if !window.is_decorated() && window.is_resizable() {
-              if let Some(window) = window.window() {
-                // Safe to unwrap since it's a valid GtkWindow
-                let result = hit_test(&window, cx, cy);
 
-                // we ignore the `__Unknown` variant so the webview receives the click correctly if it is not on the edges.
-                match result {
-                  WindowEdge::__Unknown(_) => (),
-                  _ => window.begin_resize_drag(result, 1, cx as i32, cy as i32, event.time()),
-                }
-              }
-            }
-          }
-        }
-      }
-      Inhibit(false)
-    });
-    webview.connect_touch_event(|webview, event| {
-      // This one should be GtkBox
-      if let Some(widget) = webview.parent() {
-        // This one should be GtkWindow
-        if let Some(window) = widget.parent() {
-          // Safe to unwrap unless this is not from tao
-          let window: gtk::Window = window.downcast().unwrap();
-          if !window.is_decorated() && window.is_resizable() && !window.is_maximized() {
-            if let Some(window) = window.window() {
-              if let Some((cx, cy)) = event.root_coords() {
-                if let Some(device) = event.device() {
-                  let result = hit_test(&window, cx, cy);
-
-                  // we ignore the `__Unknown` variant so the window receives the click correctly if it is not on the edges.
-                  match result {
-                    WindowEdge::__Unknown(_) => (),
-                    _ => window.begin_resize_drag_for_device(
-                      result,
-                      &device,
-                      0,
-                      cx as i32,
-                      cy as i32,
-                      event.time(),
-                    ),
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      Inhibit(false)
-    });
+    synthetic_mouse_events::setup(&webview);
+    undecorated_resizing::setup(&webview);
 
     if attributes.navigation_handler.is_some() || attributes.new_window_req_handler.is_some() {
       webview.connect_decide_policy(move |_webview, policy_decision, policy_type| {
@@ -256,10 +190,17 @@ impl InnerWebView {
     }
     webview.grab_focus();
 
+    if let Some(context) = WebViewExt::context(&*webview) {
+      use webkit2gtk::WebContextExt;
+      context.set_use_system_appearance_for_scrollbars(false);
+    }
+
     // Enable webgl, webaudio, canvas features as default.
     if let Some(settings) = WebViewExt::settings(&*webview) {
       settings.set_enable_webgl(true);
       settings.set_enable_webaudio(true);
+      settings
+        .set_enable_back_forward_navigation_gestures(attributes.back_forward_navigation_gestures);
 
       // Enable clipboard
       if attributes.clipboard {
@@ -350,7 +291,7 @@ impl InnerWebView {
 
     // Navigation
     if let Some(url) = attributes.url {
-      web_context.queue_load_uri(Rc::clone(&w.webview), url);
+      web_context.queue_load_uri(Rc::clone(&w.webview), url, attributes.headers);
       web_context.flush_queue_loader();
     } else if let Some(html) = attributes.html {
       w.webview.load_html(&html, Some("http://localhost"));
@@ -374,7 +315,10 @@ impl InnerWebView {
   }
 
   pub fn print(&self) {
-    let _ = self.eval("window.print()");
+    let _ = self.eval(
+      "window.print()",
+      None::<Box<dyn FnOnce(String) + Send + 'static>>,
+    );
   }
 
   pub fn url(&self) -> Url {
@@ -383,13 +327,36 @@ impl InnerWebView {
     Url::parse(uri.as_str()).unwrap()
   }
 
-  pub fn eval(&self, js: &str) -> Result<()> {
+  pub fn eval(
+    &self,
+    js: &str,
+    callback: Option<impl FnOnce(String) + Send + 'static>,
+  ) -> Result<()> {
     if let Some(pending_scripts) = &mut *self.pending_scripts.lock().unwrap() {
       pending_scripts.push(js.into());
     } else {
       let cancellable: Option<&Cancellable> = None;
-      self.webview.run_javascript(js, cancellable, |_| ());
+
+      match callback {
+        Some(callback) => {
+          self.webview.run_javascript(js, cancellable, |result| {
+            let mut result_str = String::new();
+
+            if let Ok(js_result) = result {
+              if let Some(js_value) = js_result.js_value() {
+                if let Some(json_str) = js_value.to_json(0) {
+                  result_str = json_str.to_string();
+                }
+              }
+            }
+
+            callback(result_str);
+          });
+        }
+        None => self.webview.run_javascript(js, cancellable, |_| ()),
+      };
     }
+
     Ok(())
   }
 
@@ -449,6 +416,38 @@ impl InnerWebView {
 
   pub fn load_url(&self, url: &str) {
     self.webview.load_uri(url)
+  }
+
+  pub fn load_url_with_headers(&self, url: &str, headers: http::HeaderMap) {
+    let req = URIRequest::builder().uri(url).build();
+
+    if let Some(ref mut req_headers) = req.http_headers() {
+      for (header, value) in headers.iter() {
+        req_headers.append(
+          header.to_string().as_str(),
+          value.to_str().unwrap_or_default(),
+        );
+      }
+    }
+
+    self.webview.load_request(&req);
+  }
+
+  pub fn clear_all_browsing_data(&self) -> Result<()> {
+    if let Some(context) = WebViewExt::context(&*self.webview) {
+      use webkit2gtk::WebContextExt;
+      if let Some(data_manger) = context.website_data_manager() {
+        webkit2gtk::WebsiteDataManagerExtManual::clear(
+          &data_manger,
+          webkit2gtk::WebsiteDataTypes::ALL,
+          glib::TimeSpan::from_seconds(0),
+          None::<&Cancellable>,
+          |_| {},
+        );
+      }
+    }
+
+    Ok(())
   }
 }
 

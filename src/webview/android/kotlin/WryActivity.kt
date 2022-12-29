@@ -1,16 +1,23 @@
-// Copyright 2020-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2020-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-package {{app-domain-reversed}}.{{app-name-snake-case}}
+package {{package}}
 
+import {{package}}.RustWebView
 import android.annotation.SuppressLint
 import android.os.Build
 import android.os.Bundle
 import android.webkit.WebView
+import android.view.KeyEvent
 import androidx.appcompat.app.AppCompatActivity
 
-abstract class TauriActivity : AppCompatActivity() {
+abstract class WryActivity : AppCompatActivity() {
+    private lateinit var mWebView: RustWebView
+
+    private fun setWebView(webView: RustWebView) {
+        mWebView = webView
+    }
 
     val version: String
         @SuppressLint("WebViewApiAvailability", "ObsoleteSdkInt")
@@ -48,6 +55,7 @@ abstract class TauriActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         create(this)
+        getSupportActionBar()?.hide()
     }
 
     override fun onStart() {
@@ -90,17 +98,25 @@ abstract class TauriActivity : AppCompatActivity() {
         memory()
     }
 
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK && mWebView?.canGoBack()) {
+            mWebView?.goBack()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     fun getAppClass(name: String): Class<*> {
         return Class.forName(name)
     }
 
     companion object {
         init {
-            System.loadLibrary("{{app-name-snake-case}}")
+            System.loadLibrary("{{library}}")
         }
     }
 
-    private external fun create(activity: TauriActivity)
+    private external fun create(activity: WryActivity)
     private external fun start()
     private external fun resume()
     private external fun pause()
