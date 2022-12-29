@@ -34,8 +34,23 @@ use objc::{
 };
 use objc_id::Id;
 
-#[cfg(target_os = "macos")]
-use crate::application::platform::macos::WindowExtMacOS;
+pub struct Window {
+  pub ns_view: *mut c_void
+}
+
+impl Window {
+  pub fn ns_window(&self) -> id {
+    unsafe {
+      let w: id = msg_send![self.ns_view as id, window];
+      w
+    }
+  }
+
+  pub fn scale_factor(&self) -> f64 {
+    todo!()
+  }
+}
+
 #[cfg(target_os = "macos")]
 use file_drop::{add_file_drop_methods, set_file_drop_handler};
 
@@ -44,8 +59,7 @@ use crate::application::platform::ios::WindowExtIOS;
 
 use crate::{
   application::{
-    dpi::{LogicalSize, PhysicalSize},
-    window::Window,
+    dpi::{LogicalSize, PhysicalSize}
   },
   webview::{
     wkwebview::download::{
@@ -724,6 +738,7 @@ r#"Object.defineProperty(window, 'ipc', {
       // Inject the web view into the window as main content
       #[cfg(target_os = "macos")]
       {
+        // todo: should this be used with window.ns_view?
         let parent_view_cls = match ClassDecl::new("WryWebViewParent", class!(NSView)) {
           Some(mut decl) => {
             decl.add_method(
@@ -744,17 +759,16 @@ r#"Object.defineProperty(window, 'ipc', {
           None => class!(NSView),
         };
 
-        let parent_view: id = msg_send![parent_view_cls, alloc];
-        let _: () = msg_send![parent_view, init];
-        parent_view.setAutoresizingMask_(NSViewHeightSizable | NSViewWidthSizable);
-        let _: () = msg_send![parent_view, addSubview: webview];
-
+        let _: () = msg_send![window.ns_view as id, addSubview: webview];
+        
         // inject the webview into the window
         let ns_window = window.ns_window() as id;
         // Tell the webview receive keyboard events in the window.
         // See https://github.com/tauri-apps/wry/issues/739
-        let _: () = msg_send![ns_window, setContentView: parent_view];
         let _: () = msg_send![ns_window, makeFirstResponder: webview];
+        
+        let frame = (window.ns_view as id).frame();
+        webview.setFrameSize(frame.size);
 
         // make sure the window is always on top when we create a new webview
         let app_class = class!(NSApplication);

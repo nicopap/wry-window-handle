@@ -15,7 +15,9 @@ use objc::{
 };
 use once_cell::sync::Lazy;
 
-use crate::{application::window::Window, webview::FileDropEvent};
+use crate::{webview::FileDropEvent};
+
+use super::Window;
 
 pub(crate) type NSDragOperation = cocoa::foundation::NSUInteger;
 #[allow(non_upper_case_globals)]

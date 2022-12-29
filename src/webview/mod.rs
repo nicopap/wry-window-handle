@@ -55,7 +55,10 @@ pub use url::Url;
 
 #[cfg(target_os = "windows")]
 use crate::application::platform::windows::WindowExtWindows;
-use crate::application::{dpi::PhysicalSize, window::Window};
+use crate::application::{dpi::PhysicalSize};
+
+#[cfg(target_os = "macos")]
+pub use wkwebview::Window;
 
 use http::{Request, Response};
 
