@@ -36,7 +36,8 @@ use windows::Win32::{
 
 use windows_implement::implement;
 
-use crate::application::window::Window;
+// use crate::application::window::Window;
+use super::Window;
 
 pub(crate) struct FileDropController {
   drop_targets: Vec<IDropTarget>,
