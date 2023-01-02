@@ -14,7 +14,7 @@ pub use web_context::WebContextImpl;
 use cocoa::appkit::{NSView, NSViewHeightSizable, NSViewWidthSizable};
 use cocoa::{
   base::{id, nil, NO, YES},
-  foundation::{NSDictionary, NSFastEnumeration, NSInteger},
+  foundation::{NSDictionary, NSFastEnumeration, NSInteger}, appkit::{NSWindow},
 };
 
 use std::{
@@ -27,7 +27,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use core_graphics::geometry::CGRect;
+use core_graphics::{geometry::CGRect};
 use objc::{
   declare::ClassDecl,
   runtime::{Class, Object, Sel, BOOL},
@@ -312,6 +312,7 @@ impl InnerWebView {
       let webview: id = msg_send![cls, alloc];
       let _preference: id = msg_send![config, preferences];
       let _yes: id = msg_send![class!(NSNumber), numberWithBool:1];
+      let _no: id = msg_send![class!(NSNumber), numberWithBool:0];
 
       #[cfg(target_os = "macos")]
       (*webview).set_ivar(ACCEPT_FIRST_MOUSE, attributes.accept_first_mouse);
@@ -759,6 +760,15 @@ r#"Object.defineProperty(window, 'ipc', {
           None => class!(NSView),
         };
 
+        let _: id = msg_send![webview, setValue:_no forKey:NSString::new("drawsBackground")];
+
+        if let Some(color) = attributes.background_color {
+          let color: id = msg_send![class!(NSColor), colorWithRed:color.0 as f64 / 255.0 green:color.1 as f64 / 255.0 blue:color.2 as f64 / 255.0 alpha:color.3 as f64 / 255.0];
+          let cg_color: id = msg_send![color, CGColor];
+          (window.ns_view as id).setWantsLayer(true);
+          (window.ns_view as id).layer().setBackgroundColor_(cg_color);
+        }
+
         let _: () = msg_send![window.ns_view as id, addSubview: webview];
         
         // inject the webview into the window
@@ -767,8 +777,9 @@ r#"Object.defineProperty(window, 'ipc', {
         // See https://github.com/tauri-apps/wry/issues/739
         let _: () = msg_send![ns_window, makeFirstResponder: webview];
         
-        let frame = (window.ns_view as id).frame();
+        let frame = NSView::frame(window.ns_view as id);
         webview.setFrameSize(frame.size);
+        webview.setOpaque_(false);
 
         // make sure the window is always on top when we create a new webview
         let app_class = class!(NSApplication);

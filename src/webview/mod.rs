@@ -6,6 +6,7 @@
 
 mod web_context;
 
+use tao::dpi::PhysicalSize;
 pub use web_context::WebContext;
 
 #[cfg(target_os = "android")]
@@ -40,6 +41,7 @@ pub(crate) mod wkwebview;
 use wkwebview::*;
 #[cfg(target_os = "windows")]
 pub(crate) mod webview2;
+#[cfg(target_os = "windows")]
 pub use webview2::Window;
 
 #[cfg(target_os = "windows")]
