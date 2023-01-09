@@ -3,12 +3,15 @@
 // SPDX-License-Identifier: MIT
 
 mod file_drop;
+mod timer;
 
 use crate::{
   webview::{WebContext, WebViewAttributes, RGBA},
   Error, Result,
 };
+use self::timer::Timer;
 
+use raw_window_handle::RawWindowHandle;
 use file_drop::FileDropController;
 use tao::{dpi::{PhysicalPosition, PhysicalSize}, window::CursorIcon};
 use url::Url;
@@ -46,36 +49,51 @@ use http::Request;
 use super::Theme;
 
 pub struct Window {
-  pub hwnd: *mut c_void
+  hwnd: *mut c_void
 }
 
 impl Window {
+  pub fn new(handle: RawWindowHandle) -> Self {
+    if let RawWindowHandle::Win32(handle) = handle {
+      return Self { hwnd: handle.hwnd };
+    }
+    panic!("Invalid window handle.");
+  }
+
   pub fn hwnd(&self) -> *mut c_void {
     self.hwnd
   }
+
   pub fn scale_factor(&self) -> f64 {
+    // TODO: probably should return something real
     1.0
   }
+
   pub fn is_decorated(&self) -> bool {
     true
   }
+
   pub fn inner_size(&self) -> PhysicalSize<u32> {
+    // TODO: probably should return something real
     PhysicalSize::new(100, 100)
   }
+
   pub fn is_resizable(&self) -> bool {
     false
   }
+
   pub fn is_maximized(&self) -> bool {
     false
   }
+
   pub fn set_cursor_icon(&self, cursor_icon: CursorIcon) {
-    todo!() // leave empty
+    todo!()
   }
+
   pub fn begin_resize_drag(&self, edge: isize, button: u32, x: i32, y: i32) {
-    todo!() // leave empty
+    todo!()
   }
 }
-
 
 impl From<webview2_com::Error> for Error {
   fn from(err: webview2_com::Error) -> Self {
@@ -90,6 +108,7 @@ pub(crate) struct InnerWebView {
   // the webview gets dropped, otherwise we'll have a memory leak
   #[allow(dead_code)]
   file_drop_controller: Rc<OnceCell<FileDropController>>,
+  _timer: Option<Box<Timer>>
 }
 
 impl InnerWebView {
@@ -114,10 +133,17 @@ impl InnerWebView {
       let _ = file_drop_controller.set(controller);
     }
 
+    let timer = if let Some(cb) = attributes.ui_timer {
+      Some(Timer::new(window.hwnd(), 16.67, cb))
+    } else {
+      None
+    };
+
     Ok(Self {
       controller,
       webview,
       file_drop_controller,
+      _timer: timer
     })
   }
 

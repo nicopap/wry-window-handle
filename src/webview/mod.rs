@@ -230,6 +230,8 @@ pub struct WebViewAttributes {
   /// This configuration only impacts macOS.
   /// [Documentation](https://developer.apple.com/documentation/webkit/wkwebview/1414995-allowsbackforwardnavigationgestu).
   pub back_forward_navigation_gestures: bool,
+
+  pub ui_timer: Option<Box<dyn FnMut()>>
 }
 
 impl Default for WebViewAttributes {
@@ -257,6 +259,7 @@ impl Default for WebViewAttributes {
       zoom_hotkeys_enabled: false,
       accept_first_mouse: false,
       back_forward_navigation_gestures: false,
+      ui_timer: None
     }
   }
 }
@@ -513,6 +516,11 @@ impl<'a> WebViewBuilder<'a> {
   /// allowed to navigate and false is not.
   pub fn with_navigation_handler(mut self, callback: impl Fn(String) -> bool + 'static) -> Self {
     self.webview.navigation_handler = Some(Box::new(callback));
+    self
+  }
+
+  pub fn with_ui_timer(mut self, callback: impl FnMut() + 'static) -> Self {
+    self.webview.ui_timer = Some(Box::new(callback));
     self
   }
 

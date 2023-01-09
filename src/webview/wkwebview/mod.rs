@@ -5,10 +5,13 @@
 mod download;
 #[cfg(target_os = "macos")]
 mod file_drop;
+mod timer;
 mod web_context;
 
+use raw_window_handle::RawWindowHandle;
 use url::Url;
 pub use web_context::WebContextImpl;
+use self::timer::Timer;
 
 #[cfg(target_os = "macos")]
 use cocoa::appkit::{NSView, NSViewHeightSizable, NSViewWidthSizable};
@@ -39,6 +42,13 @@ pub struct Window {
 }
 
 impl Window {
+  pub fn new(handle: RawWindowHandle) -> Self {
+    if let RawWindowHandle::AppKit(handle) = handle {
+      return Self { ns_view: handle.ns_view };
+    }
+    panic!("Invalid window handle.");
+  }
+
   pub fn ns_window(&self) -> id {
     unsafe {
       let w: id = msg_send![self.ns_view as id, window];
@@ -95,6 +105,7 @@ pub(crate) struct InnerWebView {
   file_drop_ptr: *mut (Box<dyn Fn(&Window, FileDropEvent) -> bool>, Rc<Window>),
   download_delegate: id,
   protocol_ptrs: Vec<*mut Box<dyn Fn(&Request<Vec<u8>>) -> Result<Response<Cow<'static, [u8]>>>>>,
+  _timer: Option<Box<Timer>>
 }
 
 impl InnerWebView {
@@ -692,6 +703,12 @@ impl InnerWebView {
         ns_window
       };
 
+      let timer = if let Some(cb) = attributes.ui_timer {
+        Some(Timer::new(1.0 / 60.0, cb))
+      } else {
+        None
+      };
+
       let w = Self {
         webview,
         #[cfg(target_os = "macos")]
@@ -704,6 +721,7 @@ impl InnerWebView {
         file_drop_ptr,
         download_delegate,
         protocol_ptrs,
+        _timer: timer
       };
 
       // Initialize scripts
