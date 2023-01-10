@@ -65,8 +65,7 @@ impl Window {
   }
 
   pub fn scale_factor(&self) -> f64 {
-    // TODO: probably should return something real
-    1.0
+    todo!("Not implemented yet.")
   }
 
   pub fn is_decorated(&self) -> bool {
@@ -74,8 +73,7 @@ impl Window {
   }
 
   pub fn inner_size(&self) -> PhysicalSize<u32> {
-    // TODO: probably should return something real
-    PhysicalSize::new(100, 100)
+    todo!("Not implemented yet.")
   }
 
   pub fn is_resizable(&self) -> bool {
@@ -87,11 +85,11 @@ impl Window {
   }
 
   pub fn set_cursor_icon(&self, cursor_icon: CursorIcon) {
-    todo!()
+    todo!("Not implemented yet.")
   }
 
   pub fn begin_resize_drag(&self, edge: isize, button: u32, x: i32, y: i32) {
-    todo!()
+    todo!("Not implemented yet.")
   }
 }
 
