@@ -248,6 +248,8 @@ impl InnerWebView {
     let webview =
       unsafe { controller.CoreWebView2() }.map_err(webview2_com::Error::WindowsError)?;
 
+    let hwnd_ptr = window.hwnd();
+
     // theme
     if let Some(theme) = pl_attrs.theme {
       set_theme(&webview, theme);
@@ -808,7 +810,7 @@ window.addEventListener('mousemove', (e) => window.chrome.webview.postMessage('_
     }
 
     let timer = if let Some(cb) = attributes.ui_timer {
-      Some(Timer::new(hwnd, 16.67, cb))
+      Some(Timer::new(hwnd_ptr, 16.67, cb))
     } else {
       None
     };
