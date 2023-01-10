@@ -250,6 +250,12 @@ impl InnerWebView {
     let webview =
       unsafe { controller.CoreWebView2() }.map_err(webview2_com::Error::WindowsError)?;
 
+    let timer = if let Some(cb) = attributes.ui_timer {
+      Some(Timer::new(window.hwnd(), 16.67, cb))
+    } else {
+      None
+    };
+
     // theme
     if let Some(theme) = pl_attrs.theme {
       set_theme(&webview, theme);
@@ -808,12 +814,6 @@ window.addEventListener('mousemove', (e) => window.chrome.webview.postMessage('_
         .MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC)
         .map_err(webview2_com::Error::WindowsError)?;
     }
-
-    let timer = if let Some(cb) = attributes.ui_timer {
-      Some(Timer::new(window.hwnd(), 16.67, cb))
-    } else {
-      None
-    };
 
     Ok((webview, timer))
   }
