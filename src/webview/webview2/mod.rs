@@ -125,19 +125,13 @@ impl InnerWebView {
 
     let env = Self::create_environment(&web_context, pl_attrs.clone())?;
     let controller = Self::create_controller(hwnd, &env)?;
-    let webview = Self::init_webview(window, hwnd, attributes, &env, &controller, pl_attrs)?;
+    let (webview, timer) = Self::init_webview(window, hwnd, attributes, &env, &controller, pl_attrs)?;
 
     if let Some(file_drop_handler) = file_drop_handler {
       let mut controller = FileDropController::new();
       controller.listen(hwnd, file_drop_window, file_drop_handler);
       let _ = file_drop_controller.set(controller);
     }
-
-    let timer = if let Some(cb) = attributes.ui_timer {
-      Some(Timer::new(window.hwnd(), 16.67, cb))
-    } else {
-      None
-    };
 
     Ok(Self {
       controller,
@@ -252,7 +246,7 @@ impl InnerWebView {
     env: &ICoreWebView2Environment,
     controller: &ICoreWebView2Controller,
     pl_attrs: super::PlatformSpecificWebViewAttributes,
-  ) -> webview2_com::Result<ICoreWebView2> {
+  ) -> webview2_com::Result<(ICoreWebView2, Timer)> {
     let webview =
       unsafe { controller.CoreWebView2() }.map_err(webview2_com::Error::WindowsError)?;
 
@@ -815,7 +809,13 @@ window.addEventListener('mousemove', (e) => window.chrome.webview.postMessage('_
         .map_err(webview2_com::Error::WindowsError)?;
     }
 
-    Ok(webview)
+    let timer = if let Some(cb) = attributes.ui_timer {
+      Some(Timer::new(window.hwnd(), 16.67, cb))
+    } else {
+      None
+    };
+
+    Ok((webview, timer))
   }
 
   fn add_script_to_execute_on_document_created(
