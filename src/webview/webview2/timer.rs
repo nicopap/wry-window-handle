@@ -14,7 +14,7 @@ impl Timer {
         let mut timer =  Box::new(Self { handle, func });
 
         unsafe {
-            SetTimer(handle as HWND, &mut *timer as *mut _ as UINT_PTR, interval as u32, Some(callback));
+            SetTimer(handle as HWND, &mut *timer as *mut _ as UINT_PTR, interval_milliseconds as u32, Some(callback));
         }
 
         timer
