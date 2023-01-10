@@ -246,7 +246,7 @@ impl InnerWebView {
     env: &ICoreWebView2Environment,
     controller: &ICoreWebView2Controller,
     pl_attrs: super::PlatformSpecificWebViewAttributes,
-  ) -> webview2_com::Result<(ICoreWebView2, Timer)> {
+  ) -> webview2_com::Result<(ICoreWebView2, Option<Box<Timer>>)> {
     let webview =
       unsafe { controller.CoreWebView2() }.map_err(webview2_com::Error::WindowsError)?;
 
