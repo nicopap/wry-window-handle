@@ -1,4 +1,4 @@
-// Copyright 2020-2022 Tauri Programme within The Commons Conservancy
+// Copyright 2020-2023 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
@@ -102,6 +102,7 @@ impl From<webview2_com::Error> for Error {
 pub(crate) struct InnerWebView {
   pub controller: ICoreWebView2Controller,
   webview: ICoreWebView2,
+  env: ICoreWebView2Environment,
   // Store FileDropController in here to make sure it gets dropped when
   // the webview gets dropped, otherwise we'll have a memory leak
   #[allow(dead_code)]
@@ -134,6 +135,7 @@ impl InnerWebView {
     Ok(Self {
       controller,
       webview,
+      env,
       file_drop_controller,
       _timer: timer
     })
@@ -162,7 +164,7 @@ impl InnerWebView {
           let mut lang = [0; MAX_LOCALE_NAME as usize];
           Globalization::LCIDToLocaleName(
             lcid as u32,
-            &mut lang,
+            Some(&mut lang),
             Globalization::LOCALE_ALLOW_NEUTRAL_NAMES,
           );
 
@@ -323,6 +325,27 @@ impl InnerWebView {
       controller
         .SetBounds(rect)
         .map_err(webview2_com::Error::WindowsError)?;
+    }
+
+    // document title changed handler
+    if let Some(document_title_changed_handler) = attributes.document_title_changed_handler {
+      let window_c = window.clone();
+      unsafe {
+        webview
+          .add_DocumentTitleChanged(
+            &DocumentTitleChangedEventHandler::create(Box::new(move |webview, _| {
+              let mut title = PWSTR::null();
+              if let Some(webview) = webview {
+                webview.DocumentTitle(&mut title)?;
+                let title = take_pwstr(title);
+                document_title_changed_handler(&window_c, title);
+              }
+              Ok(())
+            })),
+            &mut token,
+          )
+          .map_err(webview2_com::Error::WindowsError)?;
+      }
     }
 
     // Initialize scripts
@@ -578,7 +601,7 @@ window.addEventListener('mousemove', (e) => window.chrome.webview.postMessage('_
                       .Read(
                         buffer.as_mut_ptr() as *mut _,
                         buffer.len() as u32,
-                        &mut cb_read,
+                        Some(&mut cb_read),
                       )
                       .ok()?;
 
@@ -638,7 +661,7 @@ window.addEventListener('mousemove', (e) => window.chrome.webview.postMessage('_
                           .Write(
                             content.as_ptr() as *const _,
                             content.len() as u32,
-                            cb_write.as_mut_ptr(),
+                            Some(cb_write.as_mut_ptr()),
                           )
                           .is_ok()
                           && cb_write.assume_init() as usize == content.len()
@@ -728,10 +751,15 @@ window.addEventListener('mousemove', (e) => window.chrome.webview.postMessage('_
             .as_str()
             .replace(&format!("{}://", name), &format!("https://{}.", name))
         }
-        unsafe {
-          webview
-            .Navigate(PCWSTR::from_raw(encode_wide(url_string).as_ptr()))
-            .map_err(webview2_com::Error::WindowsError)?;
+
+        if let Some(headers) = attributes.headers {
+          load_url_with_headers(&webview, env, &url_string, headers);
+        } else {
+          unsafe {
+            webview
+              .Navigate(PCWSTR::from_raw(encode_wide(url_string).as_ptr()))
+              .map_err(webview2_com::Error::WindowsError)?;
+          }
         }
       }
     } else if let Some(html) = attributes.html {
@@ -887,6 +915,10 @@ window.addEventListener('mousemove', (e) => window.chrome.webview.postMessage('_
     let _ = unsafe { self.webview.Navigate(PCWSTR::from_raw(url.as_ptr())) };
   }
 
+  pub fn load_url_with_headers(&self, url: &str, headers: http::HeaderMap) {
+    load_url_with_headers(&self.webview, &self.env, url, headers);
+  }
+
   pub fn set_theme(&self, theme: Theme) {
     set_theme(&self.webview, theme);
   }
@@ -894,6 +926,40 @@ window.addEventListener('mousemove', (e) => window.chrome.webview.postMessage('_
 
 fn encode_wide(string: impl AsRef<std::ffi::OsStr>) -> Vec<u16> {
   string.as_ref().encode_wide().chain(once(0)).collect()
+}
+
+fn load_url_with_headers(
+  webview: &ICoreWebView2,
+  env: &ICoreWebView2Environment,
+  url: &str,
+  headers: http::HeaderMap,
+) {
+  let url = encode_wide(url);
+
+  let headers_map = {
+    let mut headers_map = String::new();
+    for (name, value) in headers.iter() {
+      let header_key = name.to_string();
+      if let Ok(value) = value.to_str() {
+        let _ = writeln!(headers_map, "{}: {}", header_key, value);
+      }
+    }
+    encode_wide(headers_map)
+  };
+
+  unsafe {
+    let env = env.cast::<ICoreWebView2Environment9>().unwrap();
+
+    if let Ok(request) = env.CreateWebResourceRequest(
+      PCWSTR::from_raw(url.as_ptr()),
+      PCWSTR::from_raw(encode_wide("GET").as_ptr()),
+      None,
+      PCWSTR::from_raw(headers_map.as_ptr()),
+    ) {
+      let webview: ICoreWebView2_10 = webview.cast().unwrap();
+      let _ = webview.NavigateWithWebResourceRequest(&request);
+    }
+  };
 }
 
 pub fn set_background_color(
