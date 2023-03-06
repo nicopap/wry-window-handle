@@ -19,7 +19,7 @@ use objc::{
 use once_cell::sync::Lazy;
 
 use crate::{
-  application::{dpi::LogicalPosition, platform::macos::WindowExtMacOS, window::Window},
+  application::{dpi::LogicalPosition, platform::macos::WindowExtMacOS},
   webview::FileDropEvent,
 };
 
