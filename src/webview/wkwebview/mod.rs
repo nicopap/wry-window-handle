@@ -27,7 +27,7 @@ use std::{
   ptr::{null, null_mut},
   rc::Rc,
   slice, str,
-  sync::{Arc, Mutex},
+  sync::{Arc, Mutex}, time::{SystemTime, UNIX_EPOCH},
 };
 
 use core_graphics::{geometry::CGRect};
@@ -106,6 +106,8 @@ pub(crate) struct InnerWebView {
   file_drop_ptr: *mut (Box<dyn Fn(&Window, FileDropEvent) -> bool>, Rc<Window>),
   download_delegate: id,
   protocol_ptrs: Vec<*mut Box<dyn Fn(&Request<Vec<u8>>) -> Result<Response<Cow<'static, [u8]>>>>>,
+  intercepted_keys: NSString,
+  parent_view: id,
   _timer: Option<Box<Timer>>
 }
 
@@ -764,6 +766,67 @@ impl InnerWebView {
         None
       };
 
+      let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+      let parent_view_cls = match ClassDecl::new(&("WryWebViewParent".to_owned() + &now.to_string()), class!(NSView)) {
+        Some(mut decl) => {
+          decl.add_method(
+            sel!(keyDown:),
+            key_down as extern "C" fn(&mut Object, Sel, id),
+          );
+
+          decl.add_method(
+            sel!(performKeyEquivalent:),
+            perform_key_equivalent as extern "C" fn(&mut Object, Sel, id) -> BOOL,
+          );
+
+          decl.add_ivar::<id>("intercepted_keys");
+
+          unsafe fn get_key_event_as_string(event: id) -> String {
+            let chars = NSString(msg_send![event, charactersIgnoringModifiers]);
+            let modifiers: u32 = msg_send![event, modifierFlags];
+            let mut str = "".to_owned();
+            if modifiers & 1 << 17 != 0 {
+              str += "shift+";
+            }
+            if modifiers & 1 << 18 != 0 {
+              str += "control+";
+            }
+            if modifiers & 1 << 19 != 0 {
+              str += "option+";
+            }
+            if modifiers & 1 << 20 != 0 {
+              str += "command+";
+            }
+            str + &chars.to_str().to_lowercase()
+          }
+          
+          extern "C" fn perform_key_equivalent(this: &mut Object, _sel: Sel, event: id) -> BOOL {
+            unsafe {
+              let key_str = get_key_event_as_string(event);
+              let intercepted_keys = NSString(*this.get_ivar::<id>("intercepted_keys"));
+              if intercepted_keys.to_str().contains(&(key_str + ",")) {
+                YES
+              } else {
+                NO
+              }
+            }
+          }
+
+          extern "C" fn key_down(this: &mut Object, _sel: Sel, event: id) {
+            unsafe {
+              let key_str = get_key_event_as_string(event);
+              let intercepted_keys = NSString(*this.get_ivar::<id>("intercepted_keys"));
+              if !intercepted_keys.to_str().contains(&(key_str + ",")) {
+                let _: () = msg_send![super(this, class!(NSView)), keyDown:event];
+              }
+            }
+          }
+
+          decl.register()
+        }
+        None => class!(NSView),
+      };
+
       let w = Self {
         webview,
         #[cfg(target_os = "macos")]
@@ -777,7 +840,9 @@ impl InnerWebView {
         file_drop_ptr,
         download_delegate,
         protocol_ptrs,
-        _timer: timer
+        intercepted_keys: NSString::new_retain("1,2,3,4,5,6,7,8,9,0,,.,-,"),
+        _timer: timer,
+        parent_view: msg_send![parent_view_cls, alloc]
       };
 
       // Initialize scripts
@@ -813,52 +878,25 @@ r#"Object.defineProperty(window, 'ipc', {
       // Inject the web view into the window as main content
       #[cfg(target_os = "macos")]
       {
-        // todo: should this be used with window.ns_view?
-        let parent_view_cls = match ClassDecl::new("WryWebViewParent", class!(NSView)) {
-          Some(mut decl) => {
-            decl.add_method(
-              sel!(keyDown:),
-              key_down as extern "C" fn(&mut Object, Sel, id),
-            );
-
-            extern "C" fn key_down(_this: &mut Object, _sel: Sel, event: id) {
-              unsafe {
-                let app = cocoa::appkit::NSApp();
-                let menu: id = msg_send![app, mainMenu];
-                let () = msg_send![menu, performKeyEquivalent: event];
-              }
-            }
-
-            decl.register()
-          }
-          None => class!(NSView),
-        };
+        let _: () = msg_send![w.parent_view, init];
 
         let _: id = msg_send![webview, setValue:_no forKey:NSString::new("drawsBackground")];
 
         if let Some(color) = attributes.background_color {
           let color: id = msg_send![class!(NSColor), colorWithRed:color.0 as f64 / 255.0 green:color.1 as f64 / 255.0 blue:color.2 as f64 / 255.0 alpha:color.3 as f64 / 255.0];
           let cg_color: id = msg_send![color, CGColor];
-          (window.ns_view as id).setWantsLayer(true);
-          (window.ns_view as id).layer().setBackgroundColor_(cg_color);
+          w.parent_view.setWantsLayer(true);
+          w.parent_view.layer().setBackgroundColor_(cg_color);
         }
-
-        let _: () = msg_send![window.ns_view as id, addSubview: webview];
-        
-        // inject the webview into the window
-        let ns_window = window.ns_window() as id;
-        // Tell the webview receive keyboard events in the window.
-        // See https://github.com/tauri-apps/wry/issues/739
-        let _: () = msg_send![ns_window, makeFirstResponder: webview];
         
         let frame = NSView::frame(window.ns_view as id);
-        webview.setFrameSize(frame.size);
-        webview.setOpaque_(false);
+        w.parent_view.setAutoresizingMask_(2 | 16);
+        w.parent_view.setFrameSize(frame.size);
+        let _: () = msg_send![window.ns_view as id, addSubview: w.parent_view];
 
-        // make sure the window is always on top when we create a new webview
-        let app_class = class!(NSApplication);
-        let app: id = msg_send![app_class, sharedApplication];
-        let _: () = msg_send![app, activateIgnoringOtherApps: YES];
+        webview.setAutoresizingMask_(2 | 16);
+        webview.setFrameSize(frame.size);
+        let _: () = msg_send![w.parent_view, addSubview: webview];
       }
 
       #[cfg(target_os = "ios")]
@@ -868,6 +906,14 @@ r#"Object.defineProperty(window, 'ipc', {
       }
 
       Ok(w)
+    }
+  }
+
+  pub fn set_intercepted_keys(&mut self, keys: &str) {
+    self.intercepted_keys.release();
+    self.intercepted_keys = NSString::new_retain(keys);
+    unsafe {
+      self.parent_view.as_mut().unwrap().set_ivar::<id>("intercepted_keys", self.intercepted_keys.as_ptr());
     }
   }
 
@@ -1078,6 +1124,8 @@ impl Drop for InnerWebView {
       let () = msg_send![self.webview, removeFromSuperview];
       let _: Id<_> = Id::from_retained_ptr(self.webview);
       let _: Id<_> = Id::from_retained_ptr(self.manager);
+
+      self.intercepted_keys.release();
     }
   }
 }
@@ -1102,6 +1150,17 @@ impl NSString {
 
       ns_string
     })
+  }
+
+  fn new_retain(s: &str) -> Self {
+    NSString(unsafe {
+      let ns_string: id = msg_send![class!(NSString), alloc];
+      msg_send![ns_string, initWithBytes:s.as_ptr() length:s.len() encoding:UTF8_ENCODING]
+    })
+  }
+
+  fn release(&self) {
+    unsafe { let _: () = msg_send![self.0, release]; }
   }
 
   fn to_str(&self) -> &str {
