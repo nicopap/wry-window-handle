@@ -57,7 +57,8 @@ impl Window {
   }
 
   pub fn scale_factor(&self) -> f64 {
-    todo!()
+    // todo?
+    1.0
   }
 }
 
