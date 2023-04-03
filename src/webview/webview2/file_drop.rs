@@ -18,6 +18,7 @@ use std::{
   rc::Rc,
 };
 
+use tao::dpi::PhysicalPosition;
 use windows::Win32::{
   Foundation::{self as win32f, BOOL, DRAGDROP_E_INVALIDHWND, HWND, LPARAM, POINT, POINTL},
   Graphics::Gdi::ScreenToClient,

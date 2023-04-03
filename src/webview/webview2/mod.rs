@@ -922,6 +922,10 @@ window.addEventListener('mousemove', (e) => window.chrome.webview.postMessage('_
   pub fn set_theme(&self, theme: Theme) {
     set_theme(&self.webview, theme);
   }
+
+  pub fn set_intercepted_keys(&self, _keys: Vec<&str>) {
+    todo!("set_intercepted_keys")
+  }
 }
 
 fn encode_wide(string: impl AsRef<std::ffi::OsStr>) -> Vec<u16> {
