@@ -810,8 +810,11 @@ impl InnerWebView {
           
           extern "C" fn perform_key_equivalent(this: &mut Object, _sel: Sel, event: id) -> BOOL {
             unsafe {
-              if should_intercept(this, event) { YES } else { NO }
+              if !should_intercept(this, event) {
+                let _: () = msg_send![super(this, class!(NSView)), performKeyEquivalent:event];
+              }
             }
+            YES
           }
 
           extern "C" fn key_down(this: &mut Object, _sel: Sel, event: id) {
@@ -886,7 +889,7 @@ r#"Object.defineProperty(window, 'ipc', {
         if let Some(color) = attributes.background_color {
           let color: id = msg_send![class!(NSColor), colorWithRed:color.0 as f64 / 255.0 green:color.1 as f64 / 255.0 blue:color.2 as f64 / 255.0 alpha:color.3 as f64 / 255.0];
           let cg_color: id = msg_send![color, CGColor];
-          w.parent_view.setWantsLayer(true);
+          w.parent_view.setWantsLayer(YES);
           w.parent_view.layer().setBackgroundColor_(cg_color);
         }
         
