@@ -33,5 +33,31 @@ class RustWebView(context: Context): WebView(context) {
         }
     }
 
+    fun clearAllBrowsingData() {
+        try {
+            super.getContext().deleteDatabase("webviewCache.db");
+            super.getContext().deleteDatabase("webview.db");
+            super.clearCache(true);
+            super.clearHistory();
+            super.clearFormData();
+        } catch (ex: Exception) {
+            Logger.error("Unable to create temporary media capture file: " + ex.message)
+        }
+    }
+
+    fun setAutoPlay(enable: Boolean) {
+        post {
+          val settings = super.getSettings()
+          settings.setMediaPlaybackRequiresUserGesture(!enable)
+        }
+    }
+
+    fun setUserAgent(ua: String) {
+        post {
+          val settings = super.getSettings()
+          settings.setUserAgentString(ua)
+        }
+    }
+
     {{class-extension}}
 }

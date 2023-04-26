@@ -31,8 +31,6 @@ fn main() {
       let package = env_var("WRY_ANDROID_PACKAGE");
       let library = env_var("WRY_ANDROID_LIBRARY");
 
-      println!("cargo:rerun-if-changed={kotlin_out_dir}");
-
       let kotlin_out_dir = PathBuf::from(&kotlin_out_dir)
         .canonicalize()
         .unwrap_or_else(move |_| {
@@ -82,10 +80,23 @@ fn main() {
             &std::env::var(&class_init_env).unwrap_or_default(),
           );
 
-        let mut out = String::from("/* THIS FILE IS AUTO-GENERATED. DO NOT MODIFY!! */\n\n");
+        let auto_generated_comment = match file
+          .path()
+          .extension()
+          .unwrap_or_default()
+          .to_str()
+          .unwrap_or_default()
+        {
+          "pro" => "# THIS FILE IS AUTO-GENERATED. DO NOT MODIFY!!\n\n",
+          "kt" => "/* THIS FILE IS AUTO-GENERATED. DO NOT MODIFY!! */\n\n",
+          _ => "String::new()",
+        };
+        let mut out = String::from(auto_generated_comment);
         out.push_str(&content);
 
-        fs::write(kotlin_out_dir.join(file.file_name()), out).expect("Failed to write kotlin file");
+        let out_path = kotlin_out_dir.join(file.file_name());
+        fs::write(&out_path, out).expect("Failed to write kotlin file");
+        println!("cargo:rerun-if-changed={}", out_path.display());
       }
     }
   }

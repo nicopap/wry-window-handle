@@ -123,7 +123,7 @@ pub struct WebViewAttributes {
   /// Register custom file loading protocols with pairs of scheme uri string and a handling
   /// closure.
   ///
-  /// The closure takes a [Response] and returns a [Request].
+  /// The closure takes a [Request] and returns a [Response].
   ///
   /// # Warning
   /// Pages loaded from custom protocol will have different Origin on different platforms. And
@@ -226,15 +226,25 @@ pub struct WebViewAttributes {
 
   /// Indicates whether horizontal swipe gestures trigger backward and forward page navigation.
   ///
-  /// ## Platform-specific
+  /// ## Platform-specific:
   ///
-  /// This configuration only impacts macOS.
-  /// [Documentation](https://developer.apple.com/documentation/webkit/wkwebview/1414995-allowsbackforwardnavigationgestu).
+  /// - **Android / iOS:** Unsupported.
   pub back_forward_navigation_gestures: bool,
 
   /// Set a handler closure to process the change of the webview's document title.
   pub document_title_changed_handler: Option<Box<dyn Fn(&Window, String)>>,
   
+  /// Run the WebView with incognito mode. Note that WebContext will be ingored if incognito is
+  /// enabled.
+  ///
+  /// ## Platform-specific:
+  ///
+  /// - **Android:** Unsupported yet.
+  pub incognito: bool,
+  
+  /// Whether all media can be played without user interaction.
+  pub autoplay: bool,
+
   pub ui_timer: Option<Box<dyn FnMut()>>,
 }
 
@@ -265,6 +275,8 @@ impl Default for WebViewAttributes {
       accept_first_mouse: false,
       back_forward_navigation_gestures: false,
       document_title_changed_handler: None,
+      incognito: false,
+      autoplay: true,
       ui_timer: None,
     }
   }
@@ -348,10 +360,9 @@ impl<'a> WebViewBuilder<'a> {
 
   /// Indicates whether horizontal swipe gestures trigger backward and forward page navigation.
   ///
-  /// ## Platform-specific
+  /// ## Platform-specific:
   ///
-  /// This configuration only impacts macOS.
-  /// [Documentation](https://developer.apple.com/documentation/webkit/wkwebview/1414995-allowsbackforwardnavigationgestu).
+  /// - **Android / iOS:** Unsupported.
   pub fn with_back_forward_navigation_gestures(mut self, gesture: bool) -> Self {
     self.webview.back_forward_navigation_gestures = gesture;
     self
@@ -385,6 +396,12 @@ impl<'a> WebViewBuilder<'a> {
   /// Sets whether the WebView should be transparent.
   pub fn with_visible(mut self, visible: bool) -> Self {
     self.webview.visible = visible;
+    self
+  }
+
+  /// Sets whether all media can be played without user interaction.
+  pub fn with_autoplay(mut self, autoplay: bool) -> Self {
+    self.webview.autoplay = autoplay;
     self
   }
 
@@ -631,6 +648,17 @@ impl<'a> WebViewBuilder<'a> {
     self
   }
 
+  /// Run the WebView with incognito mode. Note that WebContext will be ingored if incognito is
+  /// enabled.
+  ///
+  /// ## Platform-specific:
+  ///
+  /// - **Android:** Unsupported yet.
+  pub fn with_incognito(mut self, incognito: bool) -> Self {
+    self.webview.incognito = incognito;
+    self
+  }
+
   /// Consume the builder and create the [`WebView`].
   ///
   /// Platform-specific behavior:
@@ -658,7 +686,8 @@ pub trait WebViewBuilderExtWindows {
   /// ## Warning
   ///
   /// By default wry passes `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`
-  /// so if you use this method, you also need to disable these components by yourself if you want.
+  /// and `--autoplay-policy=no-user-gesture-required` if autoplay is enabled
+  /// so if you use this method, you have to add these arguments yourself if you want to keep the same behavior.
   fn with_additional_browser_args<S: Into<String>>(self, additional_args: S) -> Self;
 
   /// Determines whether browser-specific accelerator keys are enabled. When this setting is set to
@@ -815,8 +844,29 @@ impl WebView {
   /// [`WebView`]. Use [`EventLoopProxy`] and a custom event to send scripts from other threads.
   ///
   /// [`EventLoopProxy`]: crate::application::event_loop::EventLoopProxy
+  ///
   pub fn evaluate_script(&self, js: &str) -> Result<()> {
-    self.webview.eval(js)
+    self
+      .webview
+      .eval(js, None::<Box<dyn Fn(String) + Send + 'static>>)
+  }
+
+  /// Evaluate and run javascript code with callback function. The evaluation result will be
+  /// serialized into a JSON string and passed to the callback function. Must be called on the
+  /// same thread who created the [`WebView`]. Use [`EventLoopProxy`] and a custom event to
+  /// send scripts from other threads.
+  ///
+  /// [`EventLoopProxy`]: crate::application::event_loop::EventLoopProxy
+  ///
+  /// Exception is ignored because of the limitation on windows. You can catch it yourself and return as string as a workaround.
+  ///
+  /// - ** Android:** Not implemented yet.
+  pub fn evaluate_script_with_callback(
+    &self,
+    js: &str,
+    callback: impl Fn(String) + Send + 'static,
+  ) -> Result<()> {
+    self.webview.eval(js, Some(callback))
   }
 
   /// Launch print modal for the webview content.
@@ -890,16 +940,23 @@ impl WebView {
     self.webview.set_background_color(background_color)
   }
 
+  /// Navigate to the specified url
   pub fn load_url(&self, url: &str) {
     self.webview.load_url(url)
   }
 
+  /// Navigate to the specified url using the specified headers
   pub fn load_url_with_headers(&self, url: &str, headers: http::HeaderMap) {
     self.webview.load_url_with_headers(url, headers)
   }
 
   pub fn set_intercepted_keys(&mut self, keys: Vec<&str>) {
     self.webview.set_intercepted_keys(keys);
+  }
+  
+  /// Clear all browsing data
+  pub fn clear_all_browsing_data(&self) -> Result<()> {
+    self.webview.clear_all_browsing_data()
   }
 }
 

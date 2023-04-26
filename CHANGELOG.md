@@ -1,5 +1,67 @@
 # Changelog
 
+## \[0.28.2]
+
+- Adjust `cargo:rerun-if-changed` instruction for Android files.
+  - [cc934fe](https://github.com/tauri-apps/wry/commit/cc934fe799836e4cc72d796f5eddba868a9b585e) refactor(build): adjust rerun-if-changed instruction for Android files ([#940](https://github.com/tauri-apps/wry/pull/940)) on 2023-04-24
+
+## \[0.28.1]
+
+- Fix unresolved reference in kotlin files when building for android.
+  - [ed36c0b](https://github.com/tauri-apps/wry/commit/ed36c0b032cdf27c926577ee72658ad9f0785a5f) fix(android): fix unresolved reference in kotlin files ([#932](https://github.com/tauri-apps/wry/pull/932)) on 2023-04-19
+- Support modifying user agent string on Android.
+  - [4a320b0](https://github.com/tauri-apps/wry/commit/4a320b0bdef81d36a1f85a083c2abbabaf958521) feat(android): add support modifying user agent string ([#933](https://github.com/tauri-apps/wry/pull/933)) on 2023-04-20
+- On Linux and macOS, add synthesized event for mouse backward and forward buttons.
+  - [6ef820b](https://github.com/tauri-apps/wry/commit/6ef820b97dd505bacdc7d3f906112ffe0a6a1e60) feat: synthesize forward/backward mouse button on Linux and macOS ([#900](https://github.com/tauri-apps/wry/pull/900)) on 2023-04-18
+
+## \[0.28.0]
+
+- Add `Webview::clear_browsing_data` method.
+  - [5f0c9e4](https://github.com/tauri-apps/wry/commit/5f0c9e4595baf5d60ec407b391f873ab52abf923) feat: add `Webview::clear_browsing_data` ([#915](https://github.com/tauri-apps/wry/pull/915)) on 2023-04-18
+- On Android, generate a `proguard-wry.pro` file that could be used to keep the necessary symbols for wry when using minification.
+  - [ced4c0b](https://github.com/tauri-apps/wry/commit/ced4c0b4459ceb0ff89d07b84d6396c60cfd75e5) feat: generate proguard rule file for android ([#927](https://github.com/tauri-apps/wry/pull/927)) on 2023-04-17
+- Update `tao` to `0.19`
+  - [d560981](https://github.com/tauri-apps/wry/commit/d56098113f9764e31f73aa84144ee84be8e2aead) refactor: rename `TauriActivity` to `WryActivity` ([#926](https://github.com/tauri-apps/wry/pull/926)) on 2023-04-17
+
+## \[0.27.3]
+
+- Adds a way to launch a WebView as incognito through a new API at WebViewBuilder named as `with_incognito`.
+  - [8698836](https://github.com/tauri-apps/wry/commit/86988368a4e833b21089d119c934529ecfe306b7) feat: Add a way to launch WebViews as incognito `WebView::as_incognito`, closes [#908](https://github.com/tauri-apps/wry/pull/908) ([#916](https://github.com/tauri-apps/wry/pull/916)) on 2023-04-06
+- On macOS and iOS, remove webcontext implementation since we don't actually use it. This also fix segfault if users drop webcontext early.
+  - [3cc45cb](https://github.com/tauri-apps/wry/commit/3cc45cb86b93c56cf2444bfc37dc6ba229d4222e) Remove webcontext implementation on wkwebview ([#922](https://github.com/tauri-apps/wry/pull/922)) on 2023-04-07
+- Use the new WKWebView `inspectable` property if available (iOS 16.4, macOS 13.3).
+  - [c3f7304](https://github.com/tauri-apps/wry/commit/c3f7304dbfd45d1e1c27b53be2369c737e946b69) feat(macos): use WKWebView's inspectable property ([#923](https://github.com/tauri-apps/wry/pull/923)) on 2023-04-08
+
+## \[0.27.2]
+
+- On Android, Add support for native back button navigation.
+  - [fc232a3](https://github.com/tauri-apps/wry/commit/fc232a32268a13ec89965450dd6cf0abca064b24) feat(android): add support for native back navigation ([#918](https://github.com/tauri-apps/wry/pull/918)) on 2023-04-03
+- Fix `WebView::url` getter on Android.
+  - [427cf92](https://github.com/tauri-apps/wry/commit/427cf9222d7152f911aa70eb778eb7aa90c83fac) Unify custom porotocol across Android/iOS ([#546](https://github.com/tauri-apps/wry/pull/546)) on 2022-04-11
+  - [b89398a](https://github.com/tauri-apps/wry/commit/b89398a9bb17303544a1f04303783f311c6dc77f) Publish New Versions ([#547](https://github.com/tauri-apps/wry/pull/547)) on 2022-04-26
+  - [c22744a](https://github.com/tauri-apps/wry/commit/c22744a0c11e9c78f548dc3786e6be30c1d6f46f) fix(android): use correct method signature ([#917](https://github.com/tauri-apps/wry/pull/917)) on 2023-03-31
+- Add Webview attribute to enable/disable autoplay. Enabled by default.
+  - [6a523cc](https://github.com/tauri-apps/wry/commit/6a523cc7a633236e1fb562e0626e0aedc67ec2fc) feat: Add setting to enable autoplay ([#913](https://github.com/tauri-apps/wry/pull/913)) on 2023-04-04
+- Fix the `WebViewBuilder::with_url` when the projet use `mimalloc`
+  - [c22744a](https://github.com/tauri-apps/wry/commit/c22744a0c11e9c78f548dc3786e6be30c1d6f46f) fix(android): use correct method signature ([#917](https://github.com/tauri-apps/wry/pull/917)) on 2023-03-31
+- Revert [`51b49c54`](https://github.com/tauri-apps/wry/commit/51b49c54e41c71d1c5f03b568094d43fb9dc32ac) which hid the webview when minimized on Windows.
+  - [f76568a](https://github.com/tauri-apps/wry/commit/f76568a1cc8f7e56f36633d2f6e700af684bb213) fix(windows): Ignore resize event when minimizing frameless windows ([#909](https://github.com/tauri-apps/wry/pull/909)) on 2023-03-24
+
+## \[0.27.1]
+
+- On Windows, Linux and macOS, add method `evaluate_script_with_callback` to execute javascipt with a callback.
+  Evaluated result will be serialized into JSON string and pass to the callback.
+  - [2647731](https://github.com/tauri-apps/wry/commit/2647731c1f084565895a5306fa6465ee6cd271c2) feat: support callback function in eval ([#778](https://github.com/tauri-apps/wry/pull/778)) on 2023-03-23
+- On iOS, set webview scroll bounce default to NO.
+  - [4d61cf1](https://github.com/tauri-apps/wry/commit/4d61cf122dc0e5b2cef818e0fd491dbd0fd47621) fix(ios): set scroll bounce default to NO ([#907](https://github.com/tauri-apps/wry/pull/907)) on 2023-03-20
+- Update the value returned on a `None` value of `ClassDecl::new("WryDownloadDelegate", class!(NSObject))`
+  from `UIViewController` to `WryDownloadDelegate`.
+  - [7795356](https://github.com/tauri-apps/wry/commit/7795356a45b1bd015fad0e9973fc5af58c8c339b) fix: WryDownloadDelegate call after first time on 2023-02-20
+- On Linux, disable system appearance for scrollbars.
+  - [530a8b7](https://github.com/tauri-apps/wry/commit/530a8b73766dc54736ae6de9528683b27430eaa6) fix(linux): disable system appearance for scrollbars ([#897](https://github.com/tauri-apps/wry/pull/897)) on 2023-03-08
+- On Windows and Linux, implement `WebviewBuilder::with_back_forward_navigation_gestures` and `WebviewAttributes::back_forward_navigation_gestures` to control swipe navigation. Disabled by default.
+  - [15b4ddf](https://github.com/tauri-apps/wry/commit/15b4ddf7698cf04b90ffcc3164ccb7b62daf6ed0) feat(win\&linux): implement the option to control gesture navigation ([#896](https://github.com/tauri-apps/wry/pull/896)) on 2023-03-07
+
 ## \[0.27.0]
 
 - Add function to dispatch closure with the Android context.
