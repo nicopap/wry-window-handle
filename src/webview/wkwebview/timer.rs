@@ -48,6 +48,7 @@ impl Timer {
 impl Drop for Timer {
     fn drop(&mut self) {
         unsafe {
+            runloop::CFRunLoopRemoveTimer(runloop::CFRunLoopGetCurrent(), self.timer.unwrap(), runloop::kCFRunLoopCommonModes);
             runloop::CFRunLoopTimerInvalidate(self.timer.unwrap());
         }
     }
