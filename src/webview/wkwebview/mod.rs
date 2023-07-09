@@ -112,7 +112,7 @@ pub(crate) struct InnerWebView {
   protocol_ptrs: Vec<*mut Box<dyn Fn(&Request<Vec<u8>>) -> Result<Response<Cow<'static, [u8]>>>>>,
   intercepted_keys: NSString,
   parent_view: id,
-  _timer: Option<Box<Timer>>
+  timer: Option<Box<Timer>>,
 }
 
 impl InnerWebView {
@@ -122,6 +122,8 @@ impl InnerWebView {
     _pl_attrs: super::PlatformSpecificWebViewAttributes,
     _web_context: Option<&mut WebContext>,
   ) -> Result<Self> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos().to_string();
+
     // Function for ipc handler
     extern "C" fn did_receive(this: &Object, _: Sel, _: id, msg: id) {
       // Safety: objc runtime calls are unsafe
@@ -278,7 +280,7 @@ impl InnerWebView {
 
       for (name, function) in attributes.custom_protocols {
         let scheme_name = format!("{}URLSchemeHandler", name);
-        let cls = ClassDecl::new(&scheme_name, class!(NSObject));
+        let cls = ClassDecl::new(&(scheme_name.to_owned() + &now), class!(NSObject));
         let cls = match cls {
           Some(mut cls) => {
             cls.add_ivar::<*mut c_void>("function");
@@ -304,7 +306,7 @@ impl InnerWebView {
 
       // Webview and manager
       let manager: id = msg_send![config, userContentController];
-      let cls = match ClassDecl::new("WryWebView", class!(WKWebView)) {
+      let cls = match ClassDecl::new(&("WryWebView".to_owned() + &now), class!(WKWebView)) {
         #[allow(unused_mut)]
         Some(mut decl) => {
           #[cfg(target_os = "macos")]
@@ -407,7 +409,7 @@ impl InnerWebView {
 
       // Message handler
       let ipc_handler_ptr = if let Some(ipc_handler) = attributes.ipc_handler {
-        let cls = ClassDecl::new("WebViewDelegate", class!(NSObject));
+        let cls = ClassDecl::new(&("WebViewDelegate".to_owned() + &now), class!(NSObject));
         let cls = match cls {
           Some(mut cls) => {
             cls.add_ivar::<*mut c_void>("function");
@@ -434,7 +436,7 @@ impl InnerWebView {
       let document_title_changed_handler = if let Some(document_title_changed_handler) =
         attributes.document_title_changed_handler
       {
-        let cls = ClassDecl::new("DocumentTitleChangedDelegate", class!(NSObject));
+        let cls = ClassDecl::new(&("DocumentTitleChangedDelegate".to_owned() + &now), class!(NSObject));
         let cls = match cls {
           Some(mut cls) => {
             cls.add_ivar::<*mut c_void>("function");
@@ -574,7 +576,7 @@ impl InnerWebView {
 
       let pending_scripts = Arc::new(Mutex::new(Some(Vec::new())));
 
-      let navigation_delegate_cls = match ClassDecl::new("WryNavigationDelegate", class!(NSObject))
+      let navigation_delegate_cls = match ClassDecl::new(&("WryNavigationDelegate".to_owned() + &now), class!(NSObject))
       {
         Some(mut cls) => {
           cls.add_ivar::<*mut c_void>("pending_scripts");
@@ -645,7 +647,7 @@ impl InnerWebView {
         let download_delegate = if attributes.download_started_handler.is_some()
           || attributes.download_completed_handler.is_some()
         {
-          let cls = match ClassDecl::new("WryDownloadDelegate", class!(NSObject)) {
+          let cls = match ClassDecl::new(&("WryDownloadDelegate".to_owned() + &now), class!(NSObject)) {
             Some(mut cls) => {
               cls.add_ivar::<*mut c_void>("started");
               cls.add_ivar::<*mut c_void>("completed");
@@ -735,7 +737,7 @@ impl InnerWebView {
         }
       }
 
-      let ui_delegate = match ClassDecl::new("WebViewUIDelegate", class!(NSObject)) {
+      let ui_delegate = match ClassDecl::new(&("WebViewUIDelegate".to_owned() + &now), class!(NSObject)) {
         Some(mut ctl) => {
           ctl.add_method(
             sel!(webView:runOpenPanelWithParameters:initiatedByFrame:completionHandler:),
@@ -789,8 +791,7 @@ impl InnerWebView {
         None
       };
 
-      let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-      let parent_view_cls = match ClassDecl::new(&("WryWebViewParent".to_owned() + &now.to_string()), class!(NSView)) {
+      let parent_view_cls = match ClassDecl::new(&("WryWebViewParent".to_owned() + &now), class!(NSView)) {
         Some(mut decl) => {
           decl.add_method(
             sel!(keyDown:),
@@ -831,12 +832,13 @@ impl InnerWebView {
           }
           
           extern "C" fn perform_key_equivalent(this: &mut Object, _sel: Sel, event: id) -> BOOL {
-            unsafe {
-              if !should_intercept(this, event) {
-                let _: () = msg_send![super(this, class!(NSView)), performKeyEquivalent:event];
+              unsafe {
+                if should_intercept(this, event) {
+                  YES
+                } else {
+                  msg_send![super(this, class!(NSView)), performKeyEquivalent:event]
+                }
               }
-            }
-            YES
           }
 
           extern "C" fn key_down(this: &mut Object, _sel: Sel, event: id) {
@@ -866,7 +868,7 @@ impl InnerWebView {
         download_delegate,
         protocol_ptrs,
         intercepted_keys: NSString::new_retain("[]"),
-        _timer: timer,
+        timer,
         parent_view: msg_send![parent_view_cls, alloc]
       };
 
@@ -1150,6 +1152,8 @@ impl Drop for InnerWebView {
   fn drop(&mut self) {
     // We need to drop handler closures here
     unsafe {
+      self.timer = None;
+
       if !self.ipc_handler_ptr.is_null() {
         drop(Box::from_raw(self.ipc_handler_ptr));
 
@@ -1182,6 +1186,7 @@ impl Drop for InnerWebView {
 
       // Remove webview from window's NSView before dropping.
       let () = msg_send![self.webview, removeFromSuperview];
+      let () = msg_send![self.parent_view, release];
       let _: Id<_> = Id::from_retained_ptr(self.webview);
       let _: Id<_> = Id::from_retained_ptr(self.manager);
 
