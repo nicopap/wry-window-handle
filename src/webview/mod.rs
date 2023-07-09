@@ -941,10 +941,6 @@ impl WebView {
   pub fn load_url_with_headers(&self, url: &str, headers: http::HeaderMap) {
     self.webview.load_url_with_headers(url, headers)
   }
-
-  pub fn set_intercepted_keys(&mut self, keys: Vec<&str>) {
-    self.webview.set_intercepted_keys(keys);
-  }
   
   /// Clear all browsing data
   pub fn clear_all_browsing_data(&self) -> Result<()> {

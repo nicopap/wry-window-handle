@@ -107,7 +107,6 @@ pub(crate) struct InnerWebView {
   file_drop_ptr: *mut (Box<dyn Fn(&Window, FileDropEvent) -> bool>, Rc<Window>),
   download_delegate: id,
   protocol_ptrs: Vec<*mut Box<dyn Fn(&Request<Vec<u8>>) -> Result<Response<Cow<'static, [u8]>>>>>,
-  intercepted_keys: NSString,
   parent_view: id
 }
 
@@ -781,69 +780,6 @@ impl InnerWebView {
         ns_window
       };
 
-      let parent_view_cls = match ClassDecl::new(&("WryWebViewParent".to_owned() + &now), class!(NSView)) {
-        Some(mut decl) => {
-          decl.add_method(
-            sel!(keyDown:),
-            key_down as extern "C" fn(&mut Object, Sel, id),
-          );
-
-          decl.add_method(
-            sel!(performKeyEquivalent:),
-            perform_key_equivalent as extern "C" fn(&mut Object, Sel, id) -> BOOL,
-          );
-
-          decl.add_ivar::<id>("intercepted_keys");
-
-          unsafe fn get_key_event_as_string(event: id) -> String {
-            let chars = NSString(msg_send![event, charactersIgnoringModifiers]);
-            let modifiers: u32 = msg_send![event, modifierFlags];
-            let mut str = "".to_owned();
-            if modifiers & 1 << 17 != 0 {
-              str += "shift+";
-            }
-            if modifiers & 1 << 18 != 0 {
-              str += "ctrl+";
-            }
-            if modifiers & 1 << 19 != 0 {
-              str += "opt+";
-            }
-            if modifiers & 1 << 20 != 0 {
-              str += "cmd+";
-            }
-            str + &chars.to_str().to_lowercase()
-          }
-
-          unsafe fn should_intercept(this: &mut Object, event: id) -> bool {
-            let key_str = get_key_event_as_string(event);
-            let raw_keys = NSString(*this.get_ivar::<id>("intercepted_keys"));
-            let keys: Vec<String> = serde_json::from_str(raw_keys.to_str()).unwrap();
-            keys.contains(&key_str)
-          }
-          
-          extern "C" fn perform_key_equivalent(this: &mut Object, _sel: Sel, event: id) -> BOOL {
-              unsafe {
-                if should_intercept(this, event) {
-                  YES
-                } else {
-                  msg_send![super(this, class!(NSView)), performKeyEquivalent:event]
-                }
-              }
-          }
-
-          extern "C" fn key_down(this: &mut Object, _sel: Sel, event: id) {
-            unsafe {
-              if !should_intercept(this, event) {
-                let _: () = msg_send![super(this, class!(NSView)), keyDown:event];
-              }
-            }
-          }
-
-          decl.register()
-        }
-        None => class!(NSView),
-      };
-
       let mut w = Self {
         webview,
         #[cfg(target_os = "macos")]
@@ -857,8 +793,7 @@ impl InnerWebView {
         file_drop_ptr,
         download_delegate,
         protocol_ptrs,
-        intercepted_keys: NSString::new_retain("[]"),
-        parent_view: msg_send![parent_view_cls, alloc]
+        parent_view: msg_send![class!(NSView), alloc]
       };
 
       // Initialize scripts
@@ -895,7 +830,6 @@ r#"Object.defineProperty(window, 'ipc', {
       #[cfg(target_os = "macos")]
       {
         let _: () = msg_send![w.parent_view, init];
-        w.set_intercepted_keys(vec![]);
 
         let _: id = msg_send![webview, setValue:_no forKey:NSString::new("drawsBackground")];
 
@@ -923,14 +857,6 @@ r#"Object.defineProperty(window, 'ipc', {
       }
 
       Ok(w)
-    }
-  }
-
-  pub fn set_intercepted_keys(&mut self, keys: Vec<&str>) {
-    self.intercepted_keys.release();
-    self.intercepted_keys = NSString::new_retain(&serde_json::to_string(&keys).unwrap());
-    unsafe {
-      self.parent_view.as_mut().unwrap().set_ivar::<id>("intercepted_keys", self.intercepted_keys.as_ptr());
     }
   }
 
@@ -1176,8 +1102,6 @@ impl Drop for InnerWebView {
       let () = msg_send![self.parent_view, release];
       let _: Id<_> = Id::from_retained_ptr(self.webview);
       let _: Id<_> = Id::from_retained_ptr(self.manager);
-
-      self.intercepted_keys.release();
     }
   }
 }
