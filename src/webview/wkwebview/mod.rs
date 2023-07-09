@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
-mod timer;
-
 mod download;
 #[cfg(target_os = "macos")]
 mod file_drop;
@@ -12,7 +10,6 @@ mod synthetic_mouse_events;
 
 use raw_window_handle::RawWindowHandle;
 use url::Url;
-use self::timer::Timer;
 
 #[cfg(target_os = "macos")]
 use cocoa::appkit::{NSView, NSViewHeightSizable, NSViewWidthSizable};
@@ -111,8 +108,7 @@ pub(crate) struct InnerWebView {
   download_delegate: id,
   protocol_ptrs: Vec<*mut Box<dyn Fn(&Request<Vec<u8>>) -> Result<Response<Cow<'static, [u8]>>>>>,
   intercepted_keys: NSString,
-  parent_view: id,
-  timer: Option<Box<Timer>>,
+  parent_view: id
 }
 
 impl InnerWebView {
@@ -785,12 +781,6 @@ impl InnerWebView {
         ns_window
       };
 
-      let timer = if let Some(cb) = attributes.ui_timer {
-        Some(Timer::new(1.0 / 60.0, cb))
-      } else {
-        None
-      };
-
       let parent_view_cls = match ClassDecl::new(&("WryWebViewParent".to_owned() + &now), class!(NSView)) {
         Some(mut decl) => {
           decl.add_method(
@@ -868,7 +858,6 @@ impl InnerWebView {
         download_delegate,
         protocol_ptrs,
         intercepted_keys: NSString::new_retain("[]"),
-        timer,
         parent_view: msg_send![parent_view_cls, alloc]
       };
 
@@ -1152,8 +1141,6 @@ impl Drop for InnerWebView {
   fn drop(&mut self) {
     // We need to drop handler closures here
     unsafe {
-      self.timer = None;
-
       if !self.ipc_handler_ptr.is_null() {
         drop(Box::from_raw(self.ipc_handler_ptr));
 

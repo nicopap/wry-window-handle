@@ -3,13 +3,11 @@
 // SPDX-License-Identifier: MIT
 
 mod file_drop;
-mod timer;
 
 use crate::{
   webview::{WebContext, WebViewAttributes, RGBA},
   Error, Result,
 };
-use self::timer::Timer;
 
 use raw_window_handle::RawWindowHandle;
 use file_drop::FileDropController;
@@ -106,8 +104,7 @@ pub(crate) struct InnerWebView {
   // Store FileDropController in here to make sure it gets dropped when
   // the webview gets dropped, otherwise we'll have a memory leak
   #[allow(dead_code)]
-  file_drop_controller: Rc<OnceCell<FileDropController>>,
-  _timer: Option<Box<Timer>>
+  file_drop_controller: Rc<OnceCell<FileDropController>>
 }
 
 impl InnerWebView {
@@ -124,7 +121,7 @@ impl InnerWebView {
 
     let env = Self::create_environment(&web_context, pl_attrs.clone(), attributes.autoplay)?;
     let controller = Self::create_controller(hwnd, &env, attributes.incognito)?;
-    let (webview, timer) = Self::init_webview(window, hwnd, attributes, &env, &controller, pl_attrs)?;
+    let webview = Self::init_webview(window, hwnd, attributes, &env, &controller, pl_attrs)?;
 
     if let Some(file_drop_handler) = file_drop_handler {
       let mut controller = FileDropController::new();
@@ -136,8 +133,7 @@ impl InnerWebView {
       controller,
       webview,
       env,
-      file_drop_controller,
-      _timer: timer
+      file_drop_controller
     })
   }
 
@@ -258,7 +254,7 @@ impl InnerWebView {
     env: &ICoreWebView2Environment,
     controller: &ICoreWebView2Controller,
     pl_attrs: super::PlatformSpecificWebViewAttributes,
-  ) -> webview2_com::Result<(ICoreWebView2, Option<Box<Timer>>)> {
+  ) -> webview2_com::Result<ICoreWebView2> {
     let webview =
       unsafe { controller.CoreWebView2() }.map_err(webview2_com::Error::WindowsError)?;
 
@@ -841,13 +837,7 @@ window.addEventListener('mousemove', (e) => window.chrome.webview.postMessage('_
         .map_err(webview2_com::Error::WindowsError)?;
     }
 
-    let timer = if let Some(cb) = attributes.ui_timer {
-      Some(Timer::new(hwnd_ptr, 16.67, cb))
-    } else {
-      None
-    };
-
-    Ok((webview, timer))
+    Ok(webview)
   }
 
   fn add_script_to_execute_on_document_created(

@@ -244,8 +244,6 @@ pub struct WebViewAttributes {
   
   /// Whether all media can be played without user interaction.
   pub autoplay: bool,
-
-  pub ui_timer: Option<Box<dyn FnMut()>>,
 }
 
 impl Default for WebViewAttributes {
@@ -276,8 +274,7 @@ impl Default for WebViewAttributes {
       back_forward_navigation_gestures: false,
       document_title_changed_handler: None,
       incognito: false,
-      autoplay: true,
-      ui_timer: None,
+      autoplay: true
     }
   }
 }
@@ -564,11 +561,6 @@ impl<'a> WebViewBuilder<'a> {
   /// allowed to navigate and false is not.
   pub fn with_navigation_handler(mut self, callback: impl Fn(String) -> bool + 'static) -> Self {
     self.webview.navigation_handler = Some(Box::new(callback));
-    self
-  }
-
-  pub fn with_ui_timer(mut self, callback: impl FnMut() + 'static) -> Self {
-    self.webview.ui_timer = Some(Box::new(callback));
     self
   }
 
