@@ -2,9 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
+use gdkx11::{X11Display, ffi::{gdk_x11_display_get_xdisplay, GdkX11Display}, x11::xlib::_XDisplay};
+use glib::translate::FromGlibPtrNone;
+use raw_window_handle::{RawWindowHandle, RawDisplayHandle};
+
 use gdk::EventMask;
 use gio::Cancellable;
 use gtk::prelude::*;
+use tao::dpi::PhysicalSize;
+use tao::window::CursorIcon;
 #[cfg(any(debug_assertions, feature = "devtools"))]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{
@@ -28,7 +34,6 @@ use web_context::WebContextExt;
 pub use web_context::WebContextImpl;
 
 use crate::{
-  application::{platform::unix::*, window::Window},
   webview::{web_context::WebContext, PageLoadEvent, WebViewAttributes, RGBA},
   Error, Result,
 };
@@ -47,9 +52,70 @@ pub(crate) struct InnerWebView {
   pending_scripts: Arc<Mutex<Option<Vec<String>>>>,
 }
 
+pub struct WindowHandle {
+  window: gtk::Window,
+  xid: gdkx11::x11::xlib::Window,
+}
+
+impl WindowHandle {
+  pub fn new(handle: RawWindowHandle, display: RawDisplayHandle) -> Self {
+    use RawWindowHandle::Xlib as Wxlib;
+    use RawDisplayHandle::Xlib as Dxlib;
+    if let (Wxlib(handle), Dxlib(display)) = (handle, display) {
+      // from <https://github.com/gtk-rs/gtk3-rs/issues/346#issuecomment-960362375>
+      let xid = handle.window;
+      let display: *mut _XDisplay = display.display.cast();
+      let display = unsafe {X11Display::from_glib_none(display)};
+      let window = gdkx11::X11Window::foreign_new_for_display(&display, xid);
+      let gw = window.upcast();
+      let gtk = gtk::Window::new(gtk::WindowType::Toplevel);
+      gtk.connect_realize(move |widget| {
+          widget.set_window(&gw);
+      });
+      gtk.set_has_window(true);
+      gtk.realize();
+      Self { window: gtk, xid }
+    } else {
+      panic!("Invalid window handle.");
+    }
+  }
+
+  pub fn gtk_window(&self) -> &gtk::Window {
+    &self.window
+  }
+
+  pub fn scale_factor(&self) -> f64 {
+    self.window.scale_factor() as f64
+  }
+
+  pub fn is_decorated(&self) -> bool {
+    self.window.is_decorated()
+  }
+
+  pub fn inner_size(&self) -> PhysicalSize<u32> {
+    let (width, height) = self.window.size();
+    PhysicalSize { width: width as u32, height:  height as u32}
+  }
+
+  pub fn is_resizable(&self) -> bool {
+    self.window.is_resizable()
+  }
+
+  pub fn is_maximized(&self) -> bool {
+    self.window.is_maximized()
+  }
+
+  pub fn set_cursor_icon(&self, _cursor_icon: CursorIcon) {
+    unimplemented!("set_cursor_icon")
+  }
+
+  pub fn begin_resize_drag(&self, _: isize, _button: u32, _x: i32, _y: i32) {
+    unimplemented!("begin_resize_drag")
+  }
+}
 impl InnerWebView {
   pub fn new(
-    window: Rc<Window>,
+    window: Rc<WindowHandle>,
     mut attributes: WebViewAttributes,
     _pl_attrs: super::PlatformSpecificWebViewAttributes,
     web_context: Option<&mut WebContext>,
@@ -103,16 +169,17 @@ impl InnerWebView {
     // web context.
     let window_hash = {
       let mut hasher = DefaultHasher::new();
-      w.id().hash(&mut hasher);
+      w.xid.hash(&mut hasher);
       hasher.finish().to_string()
     };
 
     // Connect before registering as recommended by the docs
     manager.connect_script_message_received(None, move |_m, msg| {
       if let Some(js) = msg.js_value() {
-        if let Some(ipc_handler) = &ipc_handler {
-          ipc_handler(&w, js.to_string());
-        }
+        // TODO: actually handle IPC lol
+        // if let Some(ipc_handler) = &ipc_handler {
+        //   ipc_handler(&w, js.to_string());
+        // }
       }
     });
 
@@ -129,10 +196,10 @@ impl InnerWebView {
     if let Some(document_title_changed_handler) = attributes.document_title_changed_handler {
       let w = window_rc.clone();
       webview.connect_title_notify(move |webview| {
-        document_title_changed_handler(
-          &w,
-          webview.title().map(|t| t.to_string()).unwrap_or_default(),
-        )
+        // document_title_changed_handler(
+        //   &w,
+        //   webview.title().map(|t| t.to_string()).unwrap_or_default(),
+        // )
       });
     }
 
@@ -256,10 +323,10 @@ impl InnerWebView {
       }
     }
 
-    // File drop handling
-    if let Some(file_drop_handler) = attributes.file_drop_handler {
-      file_drop::connect_drag_event(webview.clone(), window_rc, file_drop_handler);
-    }
+    // File drop handling TODO: handle this
+    // if let Some(file_drop_handler) = attributes.file_drop_handler {
+    //   file_drop::connect_drag_event(webview.clone(), window_rc, file_drop_handler);
+    // }
 
     if window.get_visible() {
       window.show_all();

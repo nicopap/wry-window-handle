@@ -6,6 +6,7 @@
 
 mod web_context;
 
+use raw_window_handle::{RawWindowHandle, RawDisplayHandle, HasRawDisplayHandle, HasRawWindowHandle};
 pub use web_context::WebContext;
 
 #[cfg(target_os = "android")]
@@ -337,12 +338,13 @@ pub struct WebViewBuilder<'a> {
   pub webview: WebViewAttributes,
   platform_specific: PlatformSpecificWebViewAttributes,
   web_context: Option<&'a mut WebContext>,
-  window: Window,
+  window: WindowHandle,
 }
 
 impl<'a> WebViewBuilder<'a> {
   /// Create [`WebViewBuilder`] from provided [`Window`].
-  pub fn new(window: Window) -> Result<Self> {
+  pub fn new(window: RawWindowHandle, display: RawDisplayHandle) -> Result<Self> {
+    let window = WindowHandle::new(window, display);
     let webview = WebViewAttributes::default();
     let web_context = None;
     #[allow(clippy::default_constructed_unit_structs)]
@@ -776,7 +778,7 @@ impl WebViewBuilderExtAndroid for WebViewBuilder<'_> {
 /// [`WebView`] presents the actual WebView window and let you still able to perform actions
 /// during event handling to it. [`WebView`] also contains the associate [`Window`] with it.
 pub struct WebView {
-  window: Rc<Window>,
+  window: Rc<WindowHandle>,
   webview: InnerWebView,
 }
 
@@ -792,7 +794,6 @@ pub struct WebView {
 impl Drop for WebView {
   fn drop(&mut self) {
     unsafe {
-      use crate::application::platform::unix::WindowExtUnix;
       use gtk::prelude::WidgetExtManual;
       self.window().gtk_window().destroy();
     }
@@ -819,13 +820,17 @@ impl WebView {
   /// called in the same thread with the [`EventLoop`] you create.
   ///
   /// [`EventLoop`]: crate::application::event_loop::EventLoop
-  pub fn new(window: Window) -> Result<Self> {
-    WebViewBuilder::new(window)?.build()
+  pub fn new<W>(window: &W) -> Result<Self> 
+  where W: HasRawDisplayHandle + HasRawWindowHandle
+  {
+    let display = window.raw_display_handle();
+    let window = window.raw_window_handle();
+    WebViewBuilder::new(window, display)?.build()
   }
 
   /// Get the [`Window`] associate with the [`WebView`]. This can let you perform window related
   /// actions.
-  pub fn window(&self) -> &Window {
+  pub fn window(&self) -> &WindowHandle {
     &self.window
   }
 
